@@ -4,32 +4,14 @@ import sqlite3
 conn = sqlite3.connect('dados/processed/retail_sales_clean2.db')
 
 query = """
-    WITH masc_cat AS (
         SELECT
-            Gender,
             Product_Category,
-            COUNT(*) AS qnt_masc
+            COUNT(CASE WHEN Gender = 'Male' THEN 1 END) AS num_male,
+            COUNT(CASE WHEN Gender = 'Female' THEN 1 END) AS num_fem,
+            ROUND((COUNT(CASE WHEN Gender = 'Male' THEN 1 END) * 100.0) / COUNT(Gender), 2) AS porc_male,
+            ROUND((COUNT(CASE WHEN Gender = 'Female' THEN 1 END) * 100.0) / COUNT(Gender), 2) AS porc_fem
         FROM vendas2
-        WHERE Gender = 'Male'
-        GROUP BY Product_Category
-    ),
-
-    fem_cat AS (
-        SELECT
-            Gender,
-            Product_Category,
-            COUNT(*) AS qnt_fem
-        FROM vendas2
-        WHERE Gender = 'Female'
-        GROUP BY Product_Category
-    )
-
-    SELECT
-        m.Product_Category,
-        ROUND((CAST(m.qnt_masc AS FLOAT) / (m.qnt_masc + f.qnt_fem) * 100), 2) AS porc_masc,
-        ROUND((CAST(f.qnt_fem AS FLOAT) / (m.qnt_masc + f.qnt_fem) * 100), 2) AS porc_fem
-    FROM masc_cat m
-    JOIN fem_cat f ON m.Product_Category = f.Product_Category;
+        GROUP BY Product_Category;
 """
 
 resultado = pd.read_sql_query(query, conn)
