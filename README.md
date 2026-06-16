@@ -32,13 +32,13 @@ Projeto focado em engenharia de dados, com ênfase em queries SQL avançadas apl
 | Conceito | Onde foi usado |
 |---|---|
 | **CRUD parametrizado** | Create, Read, Update e Delete com parâmetros tipados |
-| **CTE** (`WITH`) | Todas as queries do banco 2 + Queries 1 e 5 do primeiro banco |
-| **Window Functions** (`OVER`) | Receita acumulada, ranking de categorias |
+| **CTE** (`WITH`) | Queries do banco 2 nas versões anteriores; Query 1 e 5 do banco 1 |
+| **Window Functions** (`OVER`) | Receita acumulada, ranking de categorias, percentual por cliente e por mês |
 | **Self JOIN** | Comparação com mês de referência em vendas mensais (Query 1-5) |
-| **JOIN** | Percentual por cliente no mês, gênero por categoria |
+| **JOIN** | Percentual por cliente no mês, gênero por categoria (versão original) |
 | **LAG** | Comparação de vendas mês a mês (banco 1) |
 | **DENSE_RANK()** | Ranking de categorias por quantidade e receita |
-| **CASE WHEN** | Tradução de dia numérico para nome da semana |
+| **CASE WHEN** | Tradução de dia numérico para nome da semana; contagem condicional por gênero |
 | **strftime/substr** | Extração de ano, mês e dia da semana de datas |
 | **Divisão inteira** | Correção com `* 1.0` para porcentagens corretas |
 | **Filtro por ano** | `strftime('%Y', Date)` em query parametrizada (Query 3-6) |
@@ -127,9 +127,9 @@ Cada query gera um print do terminal salvo como `.png`, documentando o resultado
 | `maiores_compradores.png` | Clientes rankeados por receita total gerada — base para análise de clientes de alto valor |
 | `compras_acima_media.png` | Clientes cujo gasto total supera a média geral — segmentação simples de comportamento de compra |
 | `renda_acumulada.png` | Receita acumulada mês a mês com Window Function — visualiza a curva de crescimento do negócio |
-| `join_compradores.png` | Percentual de contribuição de cada cliente na receita do seu mês — resultado do JOIN entre soma por cliente e soma por mês |
-| `vendas_renda_categoria_ra.png` | Ranking de categorias por quantidade vendida e receita gerada com `DENSE_RANK()` — compara categorias em duas dimensões |
-| `genero_por_categoria.png` | Percentual de vendas por gênero dentro de cada categoria — cruza duas dimensões de segmentação |
+| `join_compradores.png` | Percentual de contribuição de cada cliente na receita do seu mês — calculado com Window Function diretamente no SELECT, sem JOIN entre CTEs |
+| `vendas_renda_categoria_ra.png` | Ranking de categorias por quantidade vendida e receita gerada com `DENSE_RANK()` — dois rankings calculados em um único SELECT sem CTEs |
+| `genero_por_categoria.png` | Percentual de vendas por gênero dentro de cada categoria — calculado com `CASE WHEN` condicional em um único SELECT, sem CTEs separadas por gênero |
 
 ### Queries Parametrizadas — `queries_parametrizadas/`
 
@@ -145,6 +145,38 @@ Cada query gera um print do terminal salvo como `.png`, documentando o resultado
 | `after_delete.png` | Tentativa de SELECT após o DELETE — retorna vazio, confirmando que o registro foi removido |
 
 > **Nota:** Os pares `update/after_update` e `delete/after_delete` foram intencionalmente organizados em subpastas separadas para deixar clara a sequência antes/depois de cada operação destrutiva.
+
+---
+
+## ⚡ Refatoração — CTE para Window Function
+
+Três queries do Banco 2 foram reescritas com foco em eficiência, eliminando CTEs e JOINs desnecessários em favor de Window Functions e agregações condicionais executadas em uma única passagem pela tabela.
+
+### `2-4-join_compradores_rendapMes.py`
+
+**Antes:** duas CTEs (`soma_user` e `ano_mes`) calculavam separadamente o total por cliente e o total por mês, que eram então combinados via `JOIN`.
+
+**Depois:** o total do mês é calculado diretamente com `SUM(Total_Amount) OVER (PARTITION BY strftime('%Y', Date), strftime('%m', Date))`, eliminando a CTE `ano_mes` e o JOIN. Tudo resolve em um único SELECT.
+
+---
+
+### `2-5-vendas_renda_categoria.py`
+
+**Antes:** duas CTEs (`por_receita` e `por_quantidade`) calculavam `RANK()` separadamente para receita e quantidade, com um `JOIN` final para unir os resultados por categoria.
+
+**Depois:** dois `DENSE_RANK() OVER (...)` são aplicados diretamente no mesmo SELECT — `rank_sum` por receita e `rank_quant` por quantidade — eliminando ambas as CTEs e o JOIN entre elas.
+
+---
+
+### `2-6-genero_pcategoria.py`
+
+**Antes:** duas CTEs (`masc_cat` e `fem_cat`) filtravam os dados por gênero separadamente com `WHERE Gender = 'Male'` e `WHERE Gender = 'Female'`, seguidas de um `JOIN` por categoria.
+
+**Depois:** `COUNT(CASE WHEN Gender = 'Male' THEN 1 END)` e `COUNT(CASE WHEN Gender = 'Female' THEN 1 END)` calculam ambas as contagens em um único SELECT sem filtro, sem CTEs e sem JOIN.
+
+---
+
+> **Por que isso importa:** as versões com CTE + JOIN forçam o banco a materializar subconjuntos intermediários e percorrer a tabela múltiplas vezes. As versões com Window Function e agregação condicional executam em uma única passagem, reduzindo I/O e facilitando a leitura da lógica.
 
 ---
 
